@@ -2,4 +2,4 @@
 Bioinformatics Class 
 Bioinfromatics class winter 2022 at UC San Diego
 
--05 Class 09 [Structural Bioinformatics]()
+-05 Class 09 [Structural Bioinformatics](https://github.com/Saltshuler17/bggn213/blob/main/Lab09_pdb/lab09.pdf)
