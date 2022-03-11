@@ -1,3 +1,3 @@
 # bggn213
 Bioinformatics Class 
-Bioinfromatics class winter 2022 at UCSD
+Bioinfromatics class winter 2022 at UC San Diego
