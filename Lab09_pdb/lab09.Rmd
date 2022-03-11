@@ -1,0 +1,83 @@
+---
+title: 'Lab 09: Structural Bioinformatics'
+author: 'Sam Altshuler (PID: A59010373)'
+date: "2/18/2022"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+
+# Introduction to RCSB PDB
+
+Download a CSV file from the PDB site. Move this CSV file into your RStudio project and use it to answer the following questions:
+```{r}
+dat <- read.csv("Data_Export_Summary.csv", row.names = 1)
+dat
+total <- apply(dat, 2, sum)
+use_total <- as.data.frame(t(total))
+dat <- rbind(dat, "Total" = total)
+```
+
+* Q1: What percentage of structures in the PDB are solved by X-Ray and Electron Microscopy.
+  + 92.56% of the structures in the PDB are from X-Ray and EM. 
+```{r}
+# Number solved by X-Ray and EM
+x_em <- use_total$X.ray + use_total$EM
+#Percent solved by X-Ray and EM
+per_x_em <- round(x_em/use_total$Total*100, 2)
+per_x_em
+```
+
+* Q2: What proportion of structures in the PDB are protein?
+  + 87.26 percent of the structures in the PBD are purely protein. 97.82% of the structures have some form of protein, where it's protein/oligosaccharide, protein alone, or protein/NA. 
+```{r}
+per_pro_only <- round(dat$Total[1]/use_total$Total *100, 2)
+per_pro_only
+pro <- grep("Protein", rownames(dat) )
+per_pro_total <- round((sum(dat$Total[pro]))/use_total$Total *100, 2)
+per_pro_total
+```
+
+
+* Q3: Type HIV in the PDB website search box on the home page and determine how many HIV-1 protease structures are in the current PDB?
+  + 4343 protein structures structures are in the current PDB. When typing in "HIV" into the search bar, 4486 structures show up. Of these roughly 4500 structures, 4343 are identified as proteins (or at least made from amino acids). 
+
+* Q4: Water molecules normally have 3 atoms. Why do we see just one atom per water molecule in this structure?
+  + The current structure doesn't show any of the hydrogens. So all water is only seen as the oxygen atom. This is because the chosen resolution is too large to portray hydrogen atoms
+
+* Q5: There is a conserved water molecule in the binding site. Can you identify this water molecule? What residue number does this water molecule have (see note below)?
+  + H2O 308 appears to be the conserved water found between the ligand and the protein.
+
+* Q6: As you have hopefully observed HIV protease is a homodimer (i.e. it is composed of two identical chains). With the aid of the graphic display and the sequence viewer extension can you identify secondary structure elements that are likely to only form in the dimer rather than the monomer?
+  + I believe the beta sheet's at the c-terminal end of the monomers likely only forms in the dimer as this is the clearest area where direct interactions between the two monomers seems to occur.
+  
+  
+# Intro to Bio3D  
+```{r}
+library(bio3d)
+
+#Reading PDB file into R
+pdb <- read.pdb("1hsg")
+pdb
+```
+
+
+* Q7: How many amino acid residues are there in this pdb object?
+  + There are 198 residues in this pdb object.
+
+* Q8: Name one of the two non-protein residues?
+  + One of the two non-protein residues is MK1
+  
+* Q9: How many protein chains are in this structure?
+  + There are 2 protein chains in this structure.
+
+Look at the attributes to see what specific data can be pulled from this object
+```{r}
+attributes(pdb)
+```
+See what pops up when you look at the atom attribute.
+```{r}
+head(pdb$atom)
+```
+
