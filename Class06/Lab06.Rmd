@@ -1,0 +1,135 @@
+---
+title: "Class06 Lab Functions"
+author: 'Sam Altshuler (PID: A59010373)'
+date: "2/4/2022"
+output: pdf_document
+---
+
+In this class we are going to learn all about functions in R. 
+
+
+First we will write a function to grade some student scores.
+Use ctl+alt+I to insert code block.
+
+```{r}
+# Example input vectors to start with
+student1 <- c(100, 100, 100, 100, 100, 100, 100, 90)
+student2 <- c(100, NA, 90, 90, 90, 90, 97, 80)
+student3 <- c(90, NA, NA, NA, NA, NA, NA, NA)
+
+```
+
+Calculate the scores of the student assignments for each student. Usually, we could just use a mean() function, but you cannot take a mean of a vector that contains NA values.
+
+```{r}
+# Results in NA values
+mean(student1)
+mean(student2)
+mean(student3)
+
+# Strip NA values using na.rm = TRUE
+mean(student1, na.rm =T)
+mean(student2, na.rm =T)
+mean(student3, na.rm =T)
+```
+mean(x, na.rm = T/F) will either remove or keep all NA values for a vector X.
+This isn't fair for student 3 since they only did one assignment and will still get a 90 for their overall homework grade. This could be fixed by setting NA to zero.
+
+To find NA values (not available, AKA missing values), use `is.na()` function. 
+
+```{r}
+student2
+# We know that only NA value for student 2 is in position 2
+is.na(student2)
+```
+Quick review of logical vectors
+```{r}
+x <- 1:5
+x < 2
+x == 3
+```
+
+Set all NA values to zero
+```{r}
+# use a temp variable to not override the original data
+n_student <- student3
+n_student[is.na(student3)] <- 0
+student3
+n_student
+
+```
+We can use min() to find smallest value
+
+```{r}
+# Return the smallest value
+min(student1)
+# Return index (position) of the smallest value
+which.min(student1)
+```
+
+Put it all together into a function! This function should drop the single lowest score per student and then determine the overall score.
+
+```{r}
+
+grade <- function(x){
+  # Replace all NA values with zero
+  x[is.na(x)] <- 0
+  # Remove the smallest value
+  y <- x[-which.min(x)]
+  # Average out the score
+  avg <- mean(y)
+  # Return the average
+  
+  return(avg)
+}
+```
+Test out the function.
+
+```{r}
+grade(student1)
+grade(student2)
+grade(student3)
+```
+## Grade the Class
+
+Input the dataset (it must be in the same workspace/directory) or use `read.csv()` with the file url as a string.
+
+```{r}
+# use read.csv to insert the gradebook as a dataframe
+gradebook <- read.csv("https://tinyurl.com/gradeinput", row.names = 1)
+gradebook
+```
+> Q2. Use the grade() function to determine who is the top scoring student
+
+```{r}
+score <- apply(gradebook, 1, grade)
+score
+which.max(score)
+```
+Student 18 is the top scoring student according to this grade book with a score of 94.50
+
+> Q3. Which homework is the hardest for the students (which homework has the lowest overall score)?
+
+```{r}
+
+# apply the mean function to every column
+# use na.rm because NA values are outliers  
+# and should just be ignored
+hw <- apply(gradebook, 2, mean, na.rm = TRUE)
+hw
+which.min(hw)
+```
+Homework 3 has the lowest mean score if NA's are removed. But... homework 2 has the lowest overall score as shown by the median in the boxplot below. 
+
+```{r}
+boxplot(gradebook)
+```
+Calculate the median to determine the homework that was the toughest as a better way to determine toughness than the mean (since outliers can affect the mean as shown by the boxplot above).
+```{r}
+hw_new <- apply(gradebook, 2, median, na.rm = TRUE)
+hw_new
+which.min(hw_new)
+```
+So homework 2 was the toughest with a median score of 72.5
+
+

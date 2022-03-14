@@ -1,0 +1,193 @@
+---
+title: "Machine Learning Lab 7"
+author: 'Sam Altshuler (PID: A59010373)'
+date: "2/10/2022"
+output: pdf_document
+---
+# PCA of UK food data
+
+## Import the UK foods dataset
+```{r}
+url <- "https://tinyurl.com/UK-foods"
+x <- read.csv(url)
+# How many rows and columns does it have?
+dim(x)
+```
+The dataset has 17 rows and 5 columns. However the first column is the rownames.
+## Check the data
+```{r}
+head(x)
+```
+
+Set the first column as rownames
+```{r}
+rownames(x) <- x[,1]
+#remove the first row since it was set to the rownames
+x <- x[,-1]
+head(x)
+```
+Now see what `dim()` returns
+```{r}
+dim(x)
+```
+You could also rename the rownames in the initial read.csv() by specifying which columns are the names.
+```{r}
+x <- read.csv(url, row.names = 1)
+head(x)
+```
+This way is prefered so that you don't run the risk of deleting any of the data when doing the first style of data transformation.
+
+## Spotting major differences and trends
+
+Barplot of the data, it's hard to get any valuable information between different components.
+```{r}
+barplot(as.matrix(x), beside=T, col=rainbow(nrow(x)))
+```
+Change the barplot to have them stacked for each country.
+
+```{r}
+barplot(as.matrix(x), beside=F, col=rainbow(nrow(x)))
+```
+Pairwise plots might be helpful
+```{r}
+pairs(x, col=rainbow(10), pch=16)
+```
+This plot compares between the two countries the amount of consumption per category. If a value is on the diagonal line, it means they have the same amount of consumption for that food category. This is a fold-change of zero. 
+However, it's still hard to determine main differences between one country from the other countries.
+
+## PCA to the rescue
+
+Do PCA of this 17 dimension UK food data. The main function in base R is called `prcomp()`
+```{r}
+# Need to transpose x to make it in the correct format for prcomp()
+pca <- prcomp(t(x))
+summary(pca)
+
+```
+The `prcomp()` function returns a list of objects
+```{r}
+plot(pca)
+```
+The "PCA plot" is also known as a pca score plot. It is a plot of PC1 v PC2. Basically a new PCA axis to view the data.
+
+```{r}
+
+attributes(pca)
+```
+Pay attention to the "x" attribute which is a matrix of the data (`pca$x`).
+```{r}
+pca$x
+
+plot(pca$x[,1], pca$x[,2], xlab = "PC1", ylab = "PC2") + text(pca$x[,1], pca$x[,2], labels = colnames(x), col =c("gold", "red", "blue", "dark green"))
+```
+
+## Digging Deeper
+
+```{r}
+# focusing on PC1 since it accounts for >90% of all variance in the dataset
+par(mar=c(10, 3, 0.35, 0))
+barplot( pca$rotation[,1], las=2 )
+```
+Now for PC2
+```{r}
+# focusing on PC1 since it accounts for >90% of all variance in the dataset
+par(mar=c(10, 3, 0.35, 0))
+barplot( pca$rotation[,2], las=2 )
+```
+
+Biplots are another way to view this data. The arrows from the center show the amount of variance that single dimension is responsible for in each principal component.
+```{r}
+biplot(pca)
+
+```
+
+#PCA of RNA-seq data
+
+Import the expression data.
+```{r}
+
+url2 <- "https://tinyurl.com/expression-CSV"
+rna.data <- read.csv(url2, row.names=1)
+head(rna.data)
+dim(rna.data)
+```
+ There are 100 genes and 10 samples in this data set (genes are rows and samples are columns).
+ 
+Perform the PCA analysis and do a simple plot.
+```{r}
+pca <- prcomp(t(rna.data), scale = TRUE)
+summary(pca)
+#simple plot
+plot(pca$x[,1], pca$x[,2], xlab = "PC1", ylab = "PC2")
+```
+About 93% of the variance can be shown in the PC1 dimension.
+Plot the Scree-plot to show the elbow point.
+```{r}
+plot(pca, main="Quick scree plot")
+```
+We can also generate our own Scree plot.
+```{r}
+# Variance caught per principal component
+pca.var <- pca$sdev^2
+
+# percent variance is usually easier to look at than just variance
+pca.var.per <- round(pca.var/sum(pca.var)*100, 1)
+pca.var.per
+```
+Now use this data to make our own scree plot. 
+```{r}
+barplot(pca.var.per, main = "Scree Plot", 
+        names.arg = paste0("PC", 1:10),
+        xlab = "Principal Component", 
+        ylab = "Percent Variance")
+```
+
+Now we can make the PCA plot a bit easier to look at. 
+
+```{r}
+## A vector of colors for wt and ko samples
+colvec <- colnames(rna.data)
+colvec[grep("wt", colvec)] <- "red"
+colvec[grep("ko", colvec)] <- "blue"
+
+plot(pca$x[,1], pca$x[,2], col=colvec, pch=16,
+     xlab=paste0("PC1 (", pca.var.per[1], "%)"),
+     ylab=paste0("PC2 (", pca.var.per[2], "%)"))
+
+text(pca$x[,1], pca$x[,2], labels = colnames(rna.data), pos=c(rep(4,5), rep(2,5)))
+```
+Use ggplot because it's more fun.
+
+```{r}
+# Load in the ggplot package
+library(ggplot2)
+df <- as.data.frame(pca$x)
+
+# Basic plot once again!
+ggplot(df) +
+  aes(PC1, PC2) +
+  geom_point()
+```
+Add in some colors and other aesthetics.
+
+```{r}
+# Add a wt and ko condition column
+df$samples <- colnames(rna.data)
+df$condition <- substr(colnames(rna.data), 1, 2)
+
+#Plot with labels and colors
+p <- ggplot(df) +
+  aes(PC1, PC2, label = samples, col = condition) +
+  geom_label(show.legend = FALSE)
+p
+```
+Add some more labels
+```{r}
+p + labs(title = "PCA of RNASeq Data",
+         subtitle = "PC1 separates wild-type from knock out conditions",
+         x = paste0("PC1 (", pca.var.per[1], "%)"),
+         y = paste0("PC2 (", pca.var.per[2], "%)"),
+         caption = "BIMM143 example data") +
+  theme_bw()
+```
+
