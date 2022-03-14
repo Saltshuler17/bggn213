@@ -1,0 +1,184 @@
+---
+title: 'Class 12: RNA-seq mini project'
+author: 'Sam Altshuler (PID: A59010373)'
+date: "2/25/2022"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+1. Input our counts and metadata files
+  - Check the format and fix if necessary
+
+2. Run differential expression analysis
+  - Setup that object required for deseq()
+  - Run deseq()
+
+3. Add annotation
+- Gene names and entrezIDs
+
+4. Volcano plot
+
+5. Pathway analysis
+
+6. Save Results!
+
+```{r setup, message=FALSE}
+library(DESeq2)
+library(ggplot2)
+library(gage)
+library(gageData)
+library(pathview)
+library(AnnotationDbi)
+library(org.Hs.eg.db)
+
+```
+
+# Input counts and metadata
+
+```{r readcsv}
+countData <- read.csv("GSE37704_featurecounts.csv", row.names = 1)
+colData <- read.csv("GSE37704_metadata.csv", row.names = 1)
+countData <- as.matrix(countData[,-1])
+head(countData)
+```
+
+Check that the metadata matches the column names of the counts data
+
+```{r matching}
+all(colnames(countData) == row.names(colData))
+```
+## Get rid of the zeroes
+
+```{r zeroes}
+# add across each row and if it's not zero (greater than zero), keep it
+ct_data <- countData[rowSums(countData) > 0,]
+head(ct_data)
+```
+Let's do a PCA as a QC. This should show us a difference between the control and the experimental condition
+```{r}
+# remember to transpose the data so the conditions are the rows rather than the columns
+pca <- prcomp(t(ct_data), scale = T)
+summary(pca)
+# pca$x is where the data is stored
+ggplot(as.data.frame(pca$x), aes(x= PC1, y = PC2, color = colData$condition))+
+  geom_point()
+```
+
+The control and knockdown condition are clearly two separate clusters! QC successful.
+
+
+## Time for DESeq analysis
+
+Like lots of BioConductor functions, it wants our data in a specific organized way. 
+
+
+```{r deseq, message=FALSE, warning=FALSE}
+dds <- DESeqDataSetFromMatrix(countData=ct_data,
+                             colData=colData,
+                             design=~condition)
+
+dds <- DESeq(dds)
+
+```
+
+Get results
+```{r res}
+res <- results(dds)
+head(res)
+```
+
+## Add the annotations
+Again we will use the AnnotationDbi package to add gene SYMBOLs and entrezIDs.
+```{r annotation}
+#Store the correctly mapped IDs as a column in the results data frame
+res$symbol <- mapIds(org.Hs.eg.db,
+                     key = row.names(res), # what are the values you are trying to map
+                     keytype = "ENSEMBL", # what is the format of the values
+                     column = "SYMBOL", # what are we mapping two
+                     multiVals = "first") # if there are multiple values in the symbol, choose the first value
+
+res$gene_name <- mapIds(org.Hs.eg.db,
+                     key = row.names(res), 
+                     keytype = "ENSEMBL", 
+                     column = "GENENAME", 
+                     multiVals = "first") 
+
+res$entrez <- mapIds(org.Hs.eg.db,
+                     key = row.names(res), 
+                     keytype = "ENSEMBL", 
+                     column = "ENTREZID", 
+                     multiVals = "first")
+
+#Check the results data frame to confirm that the columns were added correctly
+head(res)
+```
+
+## Volcano plot 
+
+```{r pompei}
+# Use Size column to dictate coloring (size = significance)
+res$size <- abs(res$log2FoldChange) >2 & res$padj < 0.05
+ggplot(as.data.frame(res))+
+  aes(x = log2FoldChange, y = -log(padj), color = size)+
+  geom_point()+
+  xlab("Log2 Fold Change") +
+  ylab("-Log(Adjusted p-Value)")+
+  labs(title = "Differential Gene Expression")+
+  theme(legend.position = "none")
+  
+```
+
+## Pathway analysis
+
+Use `gage()` again to start this pathway analysis! Using Kegg and GO genesets here
+```{r prep}
+foldchange <- res$log2FoldChange
+names(foldchange) <- res$entrez
+```
+
+```{r gage}
+data(kegg.sets.hs)
+data(sigmet.idx.hs)
+
+# Focus on signaling and metabolic pathways only
+kegg.sets.hs <- kegg.sets.hs[sigmet.idx.hs]
+
+# Get the results 
+keggres <-  gage(foldchange, gsets=kegg.sets.hs)
+```
+
+
+Let's look at the down regulated data.
+
+```{r}
+head(keggres$less)
+```
+
+```{r pathview, message=FALSE}
+pathview(gene.data=foldchange, pathway.id="hsa04110")
+
+```
+![](hsa04110.pathview.png)
+
+Gene Ontology, Reactome
+
+To use GO we just pass in the GO genesets to the gage function in place of KEGG.
+```{r}
+data(go.sets.hs)
+data(go.subs.hs)
+
+# Focus on Biological Process subset of GO
+gobpsets <- go.sets.hs[go.subs.hs$BP]
+
+gobpres <- gage(foldchange, gsets=gobpsets)
+
+lapply(gobpres, head)
+```
+
+## Save results
+
+```{r}
+write.csv(res, file = "022522_deseq_results.csv")
+```
+

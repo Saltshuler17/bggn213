@@ -1,0 +1,241 @@
+---
+title: 'Class11: RNA-Seq continued'
+author: 'Sam Altshuler (PID: A59010373)'
+date: "2/23/2022"
+output:
+  html_document: default
+  pdf_document: default
+---
+# Transcriptomics and Analysis of RNA-Seq Data
+
+Today we will run differential expression analysis of published data from Himes et al. 
+
+
+## Import the countData and colData
+```{r}
+counts <- read.csv("airway_scaledcounts.csv", row.names = 1)
+metadata <- read.csv("airway_metadata.csv")
+```
+
+
+```{r}
+head(counts)
+
+```
+There are `r nrow(counts)` rows, i.e. "genes" in this dataset. There are `r ncol(counts)` columns in this dataset, i.e. experiments in the dataset.
+
+```{r}
+metadata
+```
+The rows in the metadata set corresponds to the experiments being run (the columns in the counts dataset). There are 4 controls and 4 treated experiments.
+
+The next question is does the drug do anything? 
+
+First confirm that the metadata matches the counts data.
+```{r}
+#column names of counts compared to ID column of metadata
+all(colnames(counts) == metadata$id)
+```
+All of the data names match up!
+
+
+Gather all of the control data (extract from metadata). 
+```{r}
+#Store the IDs of the control experiments
+control <- metadata[metadata$dex == "control", "id"]
+# Pull the columns corresponding to the controls from the counts dataset
+ct_control <- counts[,control]
+```
+
+Gather all of the treated data. This is the same as above but for the treated columns.
+```{r}
+treat <- metadata[metadata$dex == "treated", "id"]
+ct_treat <- counts[,treat]
+```
+
+Get a mean gene expression per gene for both the control and the treated. Use `apply()` or `rowMeans()`.
+```{r}
+# using apply: apply(ct_control, 1, mean)
+control.mean <- rowMeans(ct_control)
+treated.mean <- rowMeans(ct_treat)
+```
+
+
+Compare the two experimental conditions in a plot.
+```{r}
+plot(treated.mean, control.mean)
+```
+There are a bunch of genes with low values that overlap, making it hard to ID individual genes. The data is very skewed. The solution is to transform the data (like a log transformation) to make it more readable especially around overlapping values. 
+
+```{r}
+plot(treated.mean, control.mean, log = "yx")
+```
+We need to get rid of zeros because you can't take a log of 0.
+
+We often use log 2 transformation because it has an easier to understand output. A log 2 value of zero means that there's been no change (lies on the straight line). A value of 1 means it's doubled from treatment compared to control and -1 means it's half. This is called the fold change (how much is it doubling)
+
+```{r}
+log2fc <- log2(treated.mean/control.mean)
+```
+
+Make a dataframe to store the results
+
+```{r}
+ct_mean <- data.frame(control.mean, treated.mean, log2fc)
+head(ct_mean)
+```
+If either the control or treated have values of zero, there won't be a valuable log2fc value. If the denominator is a zero, the answer will be `NaN` (not a number), and if it's in the numerator, the answer will be infinity.
+
+Try to find and filter out the zero values.
+```{r}
+# Choose all count values for both control and treated with a value of zero
+# make sure to return array indices where in the dataframe the zero values are
+# Save the rows that correspond to the zero values  
+zip <- unique(which(ct_mean[,1:2] == 0, arr.ind = TRUE)[,"row"])
+# Remove the rows that correspond to zero values from the dataframe
+ct_mean_2 <- ct_mean[-zip,]
+head(ct_mean_2)
+```
+There are `r length(ct_mean_2$control.mean)` genes left after removing the zero values.
+
+There are `r sum(ct_mean_2$log2fc > 2)` genes that have a log2fc more than +2 (upregulated).
+```{r}
+sum(ct_mean_2$log2fc > 2)
+```
+These log2fc may not actually be statistically significant. Time to use the DESeq2 package!
+
+# DESeq2
+```{r}
+library(DESeq2)
+```
+
+
+First we need to set up the DESeq data object. 
+```{r}
+dds <- DESeqDataSetFromMatrix(countData=counts, 
+                              colData=metadata, 
+                              design=~dex)
+dds
+```
+```{r}
+dds <- DESeq(dds)
+res <- results(dds)
+res
+```
+`padj` is the adjusted p-value for multiple testing. 
+
+## A main results figure
+
+A common main results figur is a volcano plot. This is a plot of the log2 fold change on the x axis v the p-value (or padj) on the y-axis.
+
+```{r}
+plot(res$log2FoldChange, -log(res$padj))
+```
+As it goes up the y-axis, the smaller the p-value, the less likely the fold change is due to random chance (i.e. false positivess). The plot function should be `plot(foldchange, -log(p-value))`.
+
+```{r}
+library(ggplot2)
+# make the same volcano plot as above but color by if the p value is less than 0.05 AND 
+# the log2 fold change is greater than 2 or less than -2 (absolute value is greater than 2)
+ggplot(as.data.frame(res))+
+  aes(x = log2FoldChange, y = -log(padj), color = padj < 0.05 & abs(log2FoldChange) > 2)+
+  geom_point()+
+  xlab("Log2 Fold Change") +
+  ylab("-Log(Adjusted p-Value)")+
+  labs(title = "Differential Gene Expression", caption = "Data from Himes et al.")+
+  theme(legend.position = "none")
+```
+
+# Add Annotation Data
+
+We need to get the gene names in a format we can understand.
+
+We need `BiocManager::install("AnnotationDbi")` and `BiocManager::install("org.Hs.eg.db")`.
+
+```{r}
+library(AnnotationDbi)
+library(org.Hs.eg.db)
+```
+Now we can use the `mapIDs()` function from the AnnotationDbi package to find the aliases of the genes of interest.
+
+```{r}
+#First we look at what is available to map between
+columns(org.Hs.eg.db)
+
+```
+
+```{r}
+#Store the correctly mapped IDs as a column in the results data frame
+res$symbol <- mapIds(org.Hs.eg.db,
+                     key = row.names(res), # what are the values you are trying to map
+                     keytype = "ENSEMBL", # what is the format of the values
+                     column = "SYMBOL", # what are we mapping two
+                     multiVals = "first") # if there are multiple values in the symbol, choose the first value
+
+res$gene_name <- mapIds(org.Hs.eg.db,
+                     key = row.names(res), 
+                     keytype = "ENSEMBL", 
+                     column = "GENENAME", 
+                     multiVals = "first") 
+
+res$entrez <- mapIds(org.Hs.eg.db,
+                     key = row.names(res), 
+                     keytype = "ENSEMBL", 
+                     column = "ENTREZID", 
+                     multiVals = "first")
+
+#Check the results data frame to confirm that the columns were added correctly
+head(res)
+```
+
+# Pathway Analysis (geneset enrichment)
+Load up some more packages
+```{r}
+library(pathview)
+library(gage)
+library(gageData)
+
+
+data(kegg.sets.hs)
+
+# Examine the first 2 pathways in this kegg set for humans
+head(kegg.sets.hs, 2)
+```
+
+The `gage()` function requires a vector of fold changes. The names are the entrezIDs for the genes.
+```{r}
+foldchanges <- res$log2FoldChange
+# Give each position in the vector a name (the correct entrezID for the foldchange values)
+# This allows for easier indexing when you know what each position is actually IDed as
+names(foldchanges) <- res$entrez
+head(foldchanges)
+```
+Now let's run the geneset enrichment (AKA pathway analysis).
+```{r}
+# Get the results
+keggres <- gage(foldchanges, gsets=kegg.sets.hs)
+
+#look at what is in this new object using the attributes function
+attributes(keggres)
+```
+
+The keggres object is split into three lists: `$greater` (up), `$less` (down), and `$stats`. 
+
+Let's look at the "less" list of pathways.
+```{r}
+head(keggres$less, 3)
+```
+
+Let's explore the Asthma path a bit closer.
+```{r}
+pathview(gene.data=foldchanges, pathway.id="hsa05310")
+
+```
+![](hsa05310.pathview.png)
+
+
+# Save my results
+```{r}
+write.csv(res, file = "deseq_results.csv")
+```
+
